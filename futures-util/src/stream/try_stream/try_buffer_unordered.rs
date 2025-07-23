@@ -15,7 +15,9 @@ pin_project! {
     #[derive(Debug)]
     #[must_use = "streams do nothing unless polled"]
     pub struct TryBufferUnordered<St>
-        where St: TryStream
+    where
+        St: TryStream,
+        St::Ok: TryFuture,
     {
         #[pin]
         stream: Fuse<IntoStream<St>>,

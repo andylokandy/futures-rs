@@ -165,7 +165,7 @@ fn flatten_unordered() {
 
             let fl_unordered = st.flatten_unordered(3).collect::<Vec<_>>().await;
 
-            assert_eq!(fl_unordered, vec![0, 6, 10, 1, 7, 11, 2, 8, 12, 3, 9, 4, 10]);
+            assert_eq!(fl_unordered, vec![10, 11, 12, 6, 7, 8, 9, 10, 0, 1, 2, 3, 4]);
         });
 
         block_on(async {

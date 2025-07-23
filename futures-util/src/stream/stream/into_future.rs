@@ -8,7 +8,7 @@ use futures_core::task::{Context, Poll};
 /// Future for the [`into_future`](super::StreamExt::into_future) method.
 #[derive(Debug)]
 #[must_use = "futures do nothing unless you `.await` or poll them"]
-pub struct StreamFuture<St> {
+pub struct StreamFuture<St: Stream + Unpin> {
     stream: Option<St>,
 }
 

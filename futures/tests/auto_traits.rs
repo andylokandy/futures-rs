@@ -1098,7 +1098,7 @@ mod sink {
 /// Assert Send/Sync/Unpin for all public types in `futures::stream`.
 mod stream {
     use super::*;
-    use futures::{io, stream::*};
+    use futures::{io, stream::*, TryFuture};
 
     assert_impl!(AndThen<(), (), ()>: Send);
     assert_not_impl!(AndThen<*const (), (), ()>: Send);
@@ -1112,14 +1112,15 @@ mod stream {
     assert_not_impl!(AndThen<PhantomPinned, (), ()>: Unpin);
     assert_not_impl!(AndThen<(), PhantomPinned, ()>: Unpin);
 
-    assert_impl!(BufferUnordered<SendStream<()>>: Send);
-    assert_not_impl!(BufferUnordered<SendStream>: Send);
-    assert_not_impl!(BufferUnordered<LocalStream>: Send);
-    assert_impl!(BufferUnordered<SyncStream<()>>: Sync);
-    assert_not_impl!(BufferUnordered<SyncStream>: Sync);
-    assert_not_impl!(BufferUnordered<LocalStream>: Sync);
-    assert_impl!(BufferUnordered<UnpinStream>: Unpin);
-    assert_not_impl!(BufferUnordered<PinnedStream>: Unpin);
+    assert_impl!(BufferUnordered<SendStream<SendFuture<()>>>: Send);
+    assert_impl!(BufferUnordered<SendStream<SendFuture>>: Send);
+    assert_not_impl!(BufferUnordered<SendStream<LocalFuture>>: Send);
+    assert_not_impl!(BufferUnordered<LocalStream<SendFuture<()>>>: Send);
+    assert_impl!(BufferUnordered<SyncStream<SendSyncFuture<()>>>: Sync);
+    assert_not_impl!(BufferUnordered<SyncStream<SyncFuture<()>>>: Sync);
+    assert_not_impl!(BufferUnordered<LocalStream<SendSyncFuture<()>>>: Sync);
+    assert_impl!(BufferUnordered<UnpinStream<PinnedFuture>>: Unpin);
+    assert_not_impl!(BufferUnordered<PinnedStream<PinnedFuture>>: Unpin);
 
     assert_impl!(Buffered<SendStream<SendFuture<()>>>: Send);
     assert_not_impl!(Buffered<SendStream<SendFuture>>: Send);
@@ -1276,16 +1277,16 @@ mod stream {
     assert_not_impl!(ForEach<PhantomPinned, (), ()>: Unpin);
     assert_not_impl!(ForEach<(), PhantomPinned, ()>: Unpin);
 
-    assert_impl!(ForEachConcurrent<(), (), ()>: Send);
-    assert_not_impl!(ForEachConcurrent<*const (), (), ()>: Send);
-    assert_not_impl!(ForEachConcurrent<(), *const (), ()>: Send);
-    assert_not_impl!(ForEachConcurrent<(), (), *const ()>: Send);
-    assert_impl!(ForEachConcurrent<(), (), ()>: Sync);
-    assert_not_impl!(ForEachConcurrent<*const (), (), ()>: Sync);
-    assert_not_impl!(ForEachConcurrent<(), *const (), ()>: Sync);
-    assert_not_impl!(ForEachConcurrent<(), (), *const ()>: Sync);
-    assert_impl!(ForEachConcurrent<(), PhantomPinned, PhantomPinned>: Unpin);
-    assert_not_impl!(ForEachConcurrent<PhantomPinned, (), ()>: Unpin);
+    assert_impl!(ForEachConcurrent<(), SendFuture<()>, ()>: Send);
+    assert_not_impl!(ForEachConcurrent<*const (), SendFuture<()>, ()>: Send);
+    assert_not_impl!(ForEachConcurrent<(), LocalFuture, ()>: Send);
+    assert_not_impl!(ForEachConcurrent<(), SendFuture<()>, *const ()>: Send);
+    assert_impl!(ForEachConcurrent<(), SendSyncFuture<()>, ()>: Sync);
+    assert_not_impl!(ForEachConcurrent<*const (), SendSyncFuture<()>, ()>: Sync);
+    assert_not_impl!(ForEachConcurrent<(), LocalFuture, ()>: Sync);
+    assert_not_impl!(ForEachConcurrent<(), SendSyncFuture<()>, *const ()>: Sync);
+    assert_impl!(ForEachConcurrent<(), PinnedFuture, PhantomPinned>: Unpin);
+    assert_not_impl!(ForEachConcurrent<PhantomPinned, UnpinFuture, ()>: Unpin);
 
     assert_impl!(Forward<SendStream<()>, ()>: Send);
     assert_not_impl!(Forward<SendStream, ()>: Send);
@@ -1327,11 +1328,11 @@ mod stream {
     assert_not_impl!(FuturesOrdered<SendSyncFuture>: Sync);
     assert_impl!(FuturesOrdered<PinnedFuture>: Unpin);
 
-    assert_impl!(FuturesUnordered<()>: Send);
-    assert_not_impl!(FuturesUnordered<*const ()>: Send);
-    assert_impl!(FuturesUnordered<()>: Sync);
-    assert_not_impl!(FuturesUnordered<*const ()>: Sync);
-    assert_impl!(FuturesUnordered<PhantomPinned>: Unpin);
+    assert_impl!(FuturesUnordered<SendFuture<()>>: Send);
+    assert_not_impl!(FuturesUnordered<LocalFuture>: Send);
+    assert_impl!(FuturesUnordered<SendSyncFuture<()>>: Sync);
+    assert_not_impl!(FuturesUnordered<LocalFuture>: Sync);
+    assert_impl!(FuturesUnordered<PinnedFuture>: Unpin);
 
     assert_impl!(Inspect<(), ()>: Send);
     assert_not_impl!(Inspect<*const (), ()>: Send);
@@ -1553,11 +1554,10 @@ mod stream {
     assert_not_impl!(Select<PhantomPinned, ()>: Unpin);
     assert_not_impl!(Select<(), PhantomPinned>: Unpin);
 
-    assert_impl!(SelectAll<()>: Send);
-    assert_not_impl!(SelectAll<*const ()>: Send);
-    assert_impl!(SelectAll<()>: Sync);
-    assert_not_impl!(SelectAll<*const ()>: Sync);
-    assert_impl!(SelectAll<PhantomPinned>: Unpin);
+    assert_impl!(SelectAll<SendStream<()>>: Send);
+    assert_not_impl!(SelectAll<LocalStream>: Send);
+    assert_impl!(SelectAll<SendSyncStream<()>>: Sync);
+    assert_not_impl!(SelectAll<LocalStream>: Sync);
 
     assert_impl!(SelectNextSome<'_, ()>: Send);
     assert_not_impl!(SelectNextSome<'_, *const ()>: Send);
@@ -1600,12 +1600,11 @@ mod stream {
     assert_not_impl!(SplitStream<*const ()>: Sync);
     assert_impl!(SplitStream<PhantomPinned>: Unpin);
 
-    assert_impl!(StreamFuture<()>: Send);
-    assert_not_impl!(StreamFuture<*const ()>: Send);
-    assert_impl!(StreamFuture<()>: Sync);
-    assert_not_impl!(StreamFuture<*const ()>: Sync);
-    assert_impl!(StreamFuture<()>: Unpin);
-    assert_not_impl!(StreamFuture<PhantomPinned>: Unpin);
+    assert_impl!(StreamFuture<SendStream>: Send);
+    assert_not_impl!(StreamFuture<LocalStream>: Send);
+    assert_impl!(StreamFuture<SyncStream>: Sync);
+    assert_not_impl!(StreamFuture<LocalStream>: Sync);
+    assert_impl!(StreamFuture<SendStream>: Unpin);
 
     assert_impl!(Take<()>: Send);
     assert_not_impl!(Take<*const ()>: Send);
@@ -1652,14 +1651,14 @@ mod stream {
     assert_not_impl!(Then<PinnedStream, (), ()>: Unpin);
     assert_not_impl!(Then<UnpinStream, PhantomPinned, ()>: Unpin);
 
-    assert_impl!(TryBufferUnordered<SendTryStream<()>>: Send);
-    assert_not_impl!(TryBufferUnordered<SendTryStream>: Send);
-    assert_not_impl!(TryBufferUnordered<LocalTryStream>: Send);
-    assert_impl!(TryBufferUnordered<SyncTryStream<()>>: Sync);
-    assert_not_impl!(TryBufferUnordered<SyncTryStream>: Sync);
-    assert_not_impl!(TryBufferUnordered<LocalTryStream>: Sync);
-    assert_impl!(TryBufferUnordered<UnpinTryStream>: Unpin);
-    assert_not_impl!(TryBufferUnordered<PinnedTryStream>: Unpin);
+    assert_impl!(TryBufferUnordered<SendTryStream<SendTryFuture<()>>>: Send);
+    assert_not_impl!(TryBufferUnordered<SendTryStream<LocalTryFuture>>: Send);
+    assert_not_impl!(TryBufferUnordered<LocalTryStream<LocalTryFuture>>: Send);
+    assert_impl!(TryBufferUnordered<SyncTryStream<SendSyncTryFuture<()>>>: Sync);
+    assert_not_impl!(TryBufferUnordered<SyncTryStream<LocalTryFuture>>: Sync);
+    assert_not_impl!(TryBufferUnordered<LocalTryStream<LocalTryFuture>>: Sync);
+    assert_impl!(TryBufferUnordered<UnpinTryStream<UnpinTryFuture>>: Unpin);
+    assert_not_impl!(TryBufferUnordered<PinnedTryStream<PinnedTryFuture>>: Unpin);
 
     assert_impl!(TryBuffered<SendTryStream<SendTryFuture<(), ()>>>: Send);
     assert_not_impl!(TryBuffered<SendTryStream<SendTryFuture<*const (), ()>>>: Send);
@@ -1755,16 +1754,16 @@ mod stream {
     assert_not_impl!(TryForEach<PhantomPinned, (), ()>: Unpin);
     assert_not_impl!(TryForEach<(), PhantomPinned, ()>: Unpin);
 
-    assert_impl!(TryForEachConcurrent<(), (), ()>: Send);
-    assert_not_impl!(TryForEachConcurrent<*const (), (), ()>: Send);
-    assert_not_impl!(TryForEachConcurrent<(), *const (), ()>: Send);
-    assert_not_impl!(TryForEachConcurrent<(), (), *const ()>: Send);
-    assert_impl!(TryForEachConcurrent<(), (), ()>: Sync);
-    assert_not_impl!(TryForEachConcurrent<*const (), (), ()>: Sync);
-    assert_not_impl!(TryForEachConcurrent<(), *const (), ()>: Sync);
-    assert_not_impl!(TryForEachConcurrent<(), (), *const ()>: Sync);
-    assert_impl!(TryForEachConcurrent<(), PhantomPinned, PhantomPinned>: Unpin);
-    assert_not_impl!(TryForEachConcurrent<PhantomPinned, (), ()>: Unpin);
+    assert_impl!(TryForEachConcurrent<(), SendFuture<()>, ()>: Send);
+    assert_not_impl!(TryForEachConcurrent<*const (), SendFuture<()>, ()>: Send);
+    assert_not_impl!(TryForEachConcurrent<(), LocalFuture, ()>: Send);
+    assert_not_impl!(TryForEachConcurrent<(), SendFuture<()>, *const ()>: Send);
+    assert_impl!(TryForEachConcurrent<(), SendSyncFuture<()>, ()>: Sync);
+    assert_not_impl!(TryForEachConcurrent<*const (), SendSyncFuture<()>, ()>: Sync);
+    assert_not_impl!(TryForEachConcurrent<(), LocalFuture, ()>: Sync);
+    assert_not_impl!(TryForEachConcurrent<(), SendSyncFuture<()>, *const ()>: Sync);
+    assert_impl!(TryForEachConcurrent<(), PinnedFuture, PhantomPinned>: Unpin);
+    assert_not_impl!(TryForEachConcurrent<PhantomPinned, PinnedFuture, ()>: Unpin);
 
     assert_impl!(TryNext<'_, ()>: Send);
     assert_not_impl!(TryNext<'_, *const ()>: Send);
@@ -1848,38 +1847,38 @@ mod stream {
     assert_not_impl!(Zip<UnpinStream, PinnedStream>: Unpin);
     assert_not_impl!(Zip<PinnedStream, UnpinStream>: Unpin);
 
-    assert_impl!(futures_unordered::Iter<'_, ()>: Send);
-    assert_not_impl!(futures_unordered::Iter<'_, *const ()>: Send);
-    assert_impl!(futures_unordered::Iter<'_, ()>: Sync);
-    assert_not_impl!(futures_unordered::Iter<'_, *const ()>: Sync);
-    assert_impl!(futures_unordered::Iter<'_, ()>: Unpin);
+    assert_impl!(futures_unordered::Iter<'_, SendFuture<()>>: Send);
+    assert_not_impl!(futures_unordered::Iter<'_, LocalFuture>: Send);
+    assert_impl!(futures_unordered::Iter<'_, SyncFuture<()>>: Sync);
+    assert_not_impl!(futures_unordered::Iter<'_, LocalFuture>: Sync);
+    assert_impl!(futures_unordered::Iter<'_, UnpinFuture>: Unpin);
     // The definition of futures_unordered::Iter has `Fut: Unpin` bounds.
     // assert_not_impl!(futures_unordered::Iter<'_, PhantomPinned>: Unpin);
 
-    assert_impl!(futures_unordered::IterMut<'_, ()>: Send);
-    assert_not_impl!(futures_unordered::IterMut<'_, *const ()>: Send);
-    assert_impl!(futures_unordered::IterMut<'_, ()>: Sync);
-    assert_not_impl!(futures_unordered::IterMut<'_, *const ()>: Sync);
-    assert_impl!(futures_unordered::IterMut<'_, ()>: Unpin);
+    assert_impl!(futures_unordered::IterMut<'_, SendFuture<()>>: Send);
+    assert_not_impl!(futures_unordered::IterMut<'_, LocalFuture>: Send);
+    assert_impl!(futures_unordered::IterMut<'_, SyncFuture<()>>: Sync);
+    assert_not_impl!(futures_unordered::IterMut<'_, LocalFuture>: Sync);
+    assert_impl!(futures_unordered::IterMut<'_, UnpinFuture>: Unpin);
     // The definition of futures_unordered::IterMut has `Fut: Unpin` bounds.
     // assert_not_impl!(futures_unordered::IterMut<'_, PhantomPinned>: Unpin);
 
-    assert_impl!(futures_unordered::IterPinMut<'_, ()>: Send);
-    assert_not_impl!(futures_unordered::IterPinMut<'_, *const ()>: Send);
-    assert_impl!(futures_unordered::IterPinMut<'_, ()>: Sync);
-    assert_not_impl!(futures_unordered::IterPinMut<'_, *const ()>: Sync);
-    assert_impl!(futures_unordered::IterPinMut<'_, PhantomPinned>: Unpin);
+    assert_impl!(futures_unordered::IterPinMut<'_, SendFuture<()>>: Send);
+    assert_not_impl!(futures_unordered::IterPinMut<'_, LocalFuture>: Send);
+    assert_impl!(futures_unordered::IterPinMut<'_, SyncFuture<()>>: Sync);
+    assert_not_impl!(futures_unordered::IterPinMut<'_, LocalFuture>: Sync);
+    assert_impl!(futures_unordered::IterPinMut<'_, PinnedFuture>: Unpin);
 
-    assert_impl!(futures_unordered::IterPinRef<'_, ()>: Send);
-    assert_not_impl!(futures_unordered::IterPinRef<'_, *const ()>: Send);
-    assert_impl!(futures_unordered::IterPinRef<'_, ()>: Sync);
-    assert_not_impl!(futures_unordered::IterPinRef<'_, *const ()>: Sync);
-    assert_impl!(futures_unordered::IterPinRef<'_, PhantomPinned>: Unpin);
+    assert_impl!(futures_unordered::IterPinRef<'_, SendFuture<()>>: Send);
+    assert_not_impl!(futures_unordered::IterPinRef<'_, LocalFuture>: Send);
+    assert_impl!(futures_unordered::IterPinRef<'_, SyncFuture<()>>: Sync);
+    assert_not_impl!(futures_unordered::IterPinRef<'_, LocalFuture>: Sync);
+    assert_impl!(futures_unordered::IterPinRef<'_, PinnedFuture>: Unpin);
 
-    assert_impl!(futures_unordered::IntoIter<()>: Send);
-    assert_not_impl!(futures_unordered::IntoIter<*const ()>: Send);
-    assert_impl!(futures_unordered::IntoIter<()>: Sync);
-    assert_not_impl!(futures_unordered::IntoIter<*const ()>: Sync);
+    assert_impl!(futures_unordered::IntoIter<SendFuture<()>>: Send);
+    assert_not_impl!(futures_unordered::IntoIter<LocalFuture>: Send);
+    assert_impl!(futures_unordered::IntoIter<SyncFuture<()>>: Sync);
+    assert_not_impl!(futures_unordered::IntoIter<LocalFuture>: Sync);
     // The definition of futures_unordered::IntoIter has `Fut: Unpin` bounds.
     // assert_not_impl!(futures_unordered::IntoIter<PhantomPinned>: Unpin);
 }

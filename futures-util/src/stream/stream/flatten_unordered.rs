@@ -281,7 +281,10 @@ pin_project! {
     /// method with ability to specify flow controller.
     #[project = FlattenUnorderedWithFlowControllerProj]
     #[must_use = "streams do nothing unless polled"]
-    pub struct FlattenUnorderedWithFlowController<St, Fc> where St: Stream {
+    pub struct FlattenUnorderedWithFlowController<St, Fc>
+    where
+        St: Stream<Item: Stream + Unpin>
+    {
         #[pin]
         inner_streams: FuturesUnordered<PollStreamFut<St::Item>>,
         #[pin]
@@ -298,7 +301,7 @@ pin_project! {
 impl<St, Fc> fmt::Debug for FlattenUnorderedWithFlowController<St, Fc>
 where
     St: Stream + fmt::Debug,
-    St::Item: Stream + fmt::Debug,
+    St::Item: Stream + Unpin + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FlattenUnorderedWithFlowController")
@@ -368,6 +371,7 @@ pub enum FlowStep<C, R> {
 impl<St, Fc> FlattenUnorderedWithFlowControllerProj<'_, St, Fc>
 where
     St: Stream,
+    St::Item: Stream + Unpin,
 {
     /// Checks if current `inner_streams` bucket size is greater than optional limit.
     fn is_exceeded_limit(&self) -> bool {
@@ -524,6 +528,7 @@ where
 impl<St, Item, Fc> Sink<Item> for FlattenUnorderedWithFlowController<St, Fc>
 where
     St: Stream + Sink<Item>,
+    St::Item: Stream + Unpin,
 {
     type Error = St::Error;
 

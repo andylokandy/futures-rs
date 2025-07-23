@@ -5,6 +5,7 @@
 
 use crate::task::AtomicWaker;
 use alloc::sync::{Arc, Weak};
+use alloc::vec::Vec;
 use core::cell::UnsafeCell;
 use core::fmt::{self, Debug};
 use core::iter::FromIterator;
@@ -54,15 +55,16 @@ use self::ready_to_run_queue::{Dequeue, ReadyToRunQueue};
 /// This type is only available when the `std` or `alloc` feature of this
 /// library is activated, and it is activated by default.
 #[must_use = "streams do nothing unless polled"]
-pub struct FuturesUnordered<Fut> {
+pub struct FuturesUnordered<Fut: Future> {
     ready_to_run_queue: Arc<ReadyToRunQueue<Fut>>,
+    ready_queue: Vec<Fut::Output>,
     head_all: AtomicPtr<Task<Fut>>,
     is_terminated: AtomicBool,
 }
 
-unsafe impl<Fut: Send> Send for FuturesUnordered<Fut> {}
-unsafe impl<Fut: Send + Sync> Sync for FuturesUnordered<Fut> {}
-impl<Fut> Unpin for FuturesUnordered<Fut> {}
+unsafe impl<Fut: Future + Send> Send for FuturesUnordered<Fut> {}
+unsafe impl<Fut: Future + Send + Sync> Sync for FuturesUnordered<Fut> {}
+impl<Fut: Future> Unpin for FuturesUnordered<Fut> {}
 
 impl Spawn for FuturesUnordered<FutureObj<'_, ()>> {
     fn spawn_obj(&self, future_obj: FutureObj<'static, ()>) -> Result<(), SpawnError> {
@@ -103,13 +105,13 @@ impl LocalSpawn for FuturesUnordered<LocalFutureObj<'_, ()>> {
 // notification is received, the task will only be inserted into the ready to
 // run queue if it isn't inserted already.
 
-impl<Fut> Default for FuturesUnordered<Fut> {
+impl<Fut: Future> Default for FuturesUnordered<Fut> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<Fut> FuturesUnordered<Fut> {
+impl<Fut: Future> FuturesUnordered<Fut> {
     /// Constructs a new, empty [`FuturesUnordered`].
     ///
     /// The returned [`FuturesUnordered`] does not contain any futures.
@@ -137,6 +139,7 @@ impl<Fut> FuturesUnordered<Fut> {
         Self {
             head_all: AtomicPtr::new(ptr::null_mut()),
             ready_to_run_queue,
+            ready_queue: Vec::new(),
             is_terminated: AtomicBool::new(false),
         }
     }
@@ -146,14 +149,14 @@ impl<Fut> FuturesUnordered<Fut> {
     /// This represents the total number of in-flight futures.
     pub fn len(&self) -> usize {
         let (_, len) = self.atomic_load_head_and_len_all();
-        len
+        len + self.ready_queue.len()
     }
 
     /// Returns `true` if the set contains no futures.
     pub fn is_empty(&self) -> bool {
         // Relaxed ordering can be used here since we don't need to read from
         // the head pointer, only check whether it is null.
-        self.head_all.load(Relaxed).is_null()
+        self.head_all.load(Relaxed).is_null() && self.ready_queue.is_empty()
     }
 
     /// Push a future into the set.
@@ -407,26 +410,19 @@ impl<Fut: Future> Stream for FuturesUnordered<Fut> {
         // Ensure `parent` is correctly set.
         self.ready_to_run_queue.waker.register(cx.waker());
 
+        // Poll all futures that are ready to run.
         loop {
             // Safety: &mut self guarantees the mutual exclusion `dequeue`
             // expects
             let task = match unsafe { self.ready_to_run_queue.dequeue() } {
                 Dequeue::Empty => {
-                    if self.is_empty() {
-                        // We can only consider ourselves terminated once we
-                        // have yielded a `None`
-                        *self.is_terminated.get_mut() = true;
-                        return Poll::Ready(None);
-                    } else {
-                        return Poll::Pending;
-                    }
+                    break;
                 }
                 Dequeue::Inconsistent => {
                     // At this point, it may be worth yielding the thread &
-                    // spinning a few times... but for now, just yield using the
-                    // task system.
+                    // spinning a few times... but for now, just yield using break;
                     cx.waker().wake_by_ref();
-                    return Poll::Pending;
+                    break;
                 }
                 Dequeue::Data(task) => task,
             };
@@ -486,12 +482,12 @@ impl<Fut: Future> Stream for FuturesUnordered<Fut> {
             // * We unlink the task from our internal queue to preemptively
             //   assume it'll panic, in which case we'll want to discard it
             //   regardless.
-            struct Bomb<'a, Fut> {
+            struct Bomb<'a, Fut: Future> {
                 queue: &'a mut FuturesUnordered<Fut>,
                 task: Option<Arc<Task<Fut>>>,
             }
 
-            impl<Fut> Drop for Bomb<'_, Fut> {
+            impl<Fut: Future> Drop for Bomb<'_, Fut> {
                 fn drop(&mut self) {
                     if let Some(task) = self.task.take() {
                         self.queue.release_task(task);
@@ -543,12 +539,26 @@ impl<Fut: Future> Stream for FuturesUnordered<Fut> {
                     // the problem: https://github.com/rust-lang/futures-rs/pull/2333)
                     if yielded >= 2 || polled == len {
                         cx.waker().wake_by_ref();
-                        return Poll::Pending;
+                        break;
                     }
                     continue;
                 }
-                Poll::Ready(output) => return Poll::Ready(Some(output)),
+                Poll::Ready(output) => {
+                    bomb.queue.ready_queue.push(output);
+                }
             }
+        }
+
+        if let Some(output) = self.ready_queue.pop() {
+            // If we have a value ready, we return it.
+            Poll::Ready(Some(output))
+        } else if self.is_empty() {
+            // We can only consider ourselves terminated once we
+            // have yielded a `None`.
+            *self.is_terminated.get_mut() = true;
+            Poll::Ready(None)
+        } else {
+            Poll::Pending
         }
     }
 
@@ -558,27 +568,27 @@ impl<Fut: Future> Stream for FuturesUnordered<Fut> {
     }
 }
 
-impl<Fut> Debug for FuturesUnordered<Fut> {
+impl<Fut: Future> Debug for FuturesUnordered<Fut> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "FuturesUnordered {{ ... }}")
     }
 }
 
-impl<Fut> FuturesUnordered<Fut> {
+impl<Fut: Future> FuturesUnordered<Fut> {
     /// Clears the set, removing all futures.
     pub fn clear(&mut self) {
         *self = Self::new();
     }
 }
 
-impl<Fut> Drop for FuturesUnordered<Fut> {
+impl<Fut: Future> Drop for FuturesUnordered<Fut> {
     fn drop(&mut self) {
         // Before the strong reference to the queue is dropped we need all
         // futures to be dropped. See note at the bottom of this method.
         //
         // If there is a panic before this completes, we leak the queue.
-        struct LeakQueueOnDrop<'a, Fut>(&'a mut FuturesUnordered<Fut>);
-        impl<Fut> Drop for LeakQueueOnDrop<'_, Fut> {
+        struct LeakQueueOnDrop<'a, Fut: Future>(&'a mut FuturesUnordered<Fut>);
+        impl<Fut: Future> Drop for LeakQueueOnDrop<'_, Fut> {
             fn drop(&mut self) {
                 mem::forget(Arc::clone(&self.0.ready_to_run_queue));
             }
@@ -610,7 +620,7 @@ impl<Fut> Drop for FuturesUnordered<Fut> {
     }
 }
 
-impl<'a, Fut: Unpin> IntoIterator for &'a FuturesUnordered<Fut> {
+impl<'a, Fut: Future + Unpin> IntoIterator for &'a FuturesUnordered<Fut> {
     type Item = &'a Fut;
     type IntoIter = Iter<'a, Fut>;
 
@@ -619,7 +629,7 @@ impl<'a, Fut: Unpin> IntoIterator for &'a FuturesUnordered<Fut> {
     }
 }
 
-impl<'a, Fut: Unpin> IntoIterator for &'a mut FuturesUnordered<Fut> {
+impl<'a, Fut: Future + Unpin> IntoIterator for &'a mut FuturesUnordered<Fut> {
     type Item = &'a mut Fut;
     type IntoIter = IterMut<'a, Fut>;
 
@@ -628,7 +638,7 @@ impl<'a, Fut: Unpin> IntoIterator for &'a mut FuturesUnordered<Fut> {
     }
 }
 
-impl<Fut: Unpin> IntoIterator for FuturesUnordered<Fut> {
+impl<Fut: Future + Unpin> IntoIterator for FuturesUnordered<Fut> {
     type Item = Fut;
     type IntoIter = IntoIter<Fut>;
 
@@ -642,7 +652,7 @@ impl<Fut: Unpin> IntoIterator for FuturesUnordered<Fut> {
     }
 }
 
-impl<Fut> FromIterator<Fut> for FuturesUnordered<Fut> {
+impl<Fut: Future> FromIterator<Fut> for FuturesUnordered<Fut> {
     fn from_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = Fut>,
@@ -661,7 +671,7 @@ impl<Fut: Future> FusedStream for FuturesUnordered<Fut> {
     }
 }
 
-impl<Fut> Extend<Fut> for FuturesUnordered<Fut> {
+impl<Fut: Future> Extend<Fut> for FuturesUnordered<Fut> {
     fn extend<I>(&mut self, iter: I)
     where
         I: IntoIterator<Item = Fut>,

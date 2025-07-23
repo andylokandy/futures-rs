@@ -24,11 +24,11 @@ use crate::stream::{futures_unordered, FuturesUnordered, StreamExt, StreamFuture
 /// `select_all` function in the `stream` module, or you can start with an
 /// empty set with the `SelectAll::new` constructor.
 #[must_use = "streams do nothing unless polled"]
-pub struct SelectAll<St> {
+pub struct SelectAll<St: Stream + Unpin> {
     inner: FuturesUnordered<StreamFuture<St>>,
 }
 
-impl<St: Debug> Debug for SelectAll<St> {
+impl<St: Stream + Unpin + Debug> Debug for SelectAll<St> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "SelectAll {{ ... }}")
     }
@@ -184,15 +184,15 @@ impl<'a, St: Stream + Unpin> IntoIterator for &'a mut SelectAll<St> {
 
 /// Immutable iterator over all streams in the unordered set.
 #[derive(Debug)]
-pub struct Iter<'a, St: Unpin>(futures_unordered::Iter<'a, StreamFuture<St>>);
+pub struct Iter<'a, St: Stream + Unpin>(futures_unordered::Iter<'a, StreamFuture<St>>);
 
 /// Mutable iterator over all streams in the unordered set.
 #[derive(Debug)]
-pub struct IterMut<'a, St: Unpin>(futures_unordered::IterMut<'a, StreamFuture<St>>);
+pub struct IterMut<'a, St: Stream + Unpin>(futures_unordered::IterMut<'a, StreamFuture<St>>);
 
 /// Owned iterator over all streams in the unordered set.
 #[derive(Debug)]
-pub struct IntoIter<St: Unpin>(futures_unordered::IntoIter<StreamFuture<St>>);
+pub struct IntoIter<St: Stream + Unpin>(futures_unordered::IntoIter<StreamFuture<St>>);
 
 impl<'a, St: Stream + Unpin> Iterator for Iter<'a, St> {
     type Item = &'a St;

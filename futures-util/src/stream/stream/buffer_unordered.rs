@@ -16,6 +16,7 @@ pin_project! {
     pub struct BufferUnordered<St>
     where
         St: Stream,
+        St::Item: Future,
     {
         #[pin]
         stream: Fuse<St>,
@@ -27,6 +28,7 @@ pin_project! {
 impl<St> fmt::Debug for BufferUnordered<St>
 where
     St: Stream + fmt::Debug,
+    St::Item: Future,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BufferUnordered")

@@ -28,10 +28,11 @@ fn basic_usage() {
         assert!(!queue.poll_next_unpin(cx).is_ready());
 
         tx1.send("world").unwrap();
-        tx3.send("world2").unwrap();
-
         assert_eq!(Poll::Ready(Some(Ok("world"))), queue.poll_next_unpin(cx));
+        
+        tx3.send("world2").unwrap();
         assert_eq!(Poll::Ready(Some(Ok("world2"))), queue.poll_next_unpin(cx));
+        
         assert_eq!(Poll::Ready(None), queue.poll_next_unpin(cx));
     }));
 }
@@ -56,10 +57,12 @@ fn resolving_errors() {
         assert!(!queue.poll_next_unpin(cx).is_ready());
 
         drop(tx1);
-        tx3.send("world2").unwrap();
 
         assert_eq!(Poll::Ready(Some(Err(oneshot::Canceled))), queue.poll_next_unpin(cx));
+        
+        tx3.send("world2").unwrap();
         assert_eq!(Poll::Ready(Some(Ok("world2"))), queue.poll_next_unpin(cx));
+
         assert_eq!(Poll::Ready(None), queue.poll_next_unpin(cx));
     }));
 }

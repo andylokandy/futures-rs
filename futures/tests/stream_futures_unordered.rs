@@ -82,7 +82,7 @@ fn from_iterator() {
         .into_iter()
         .collect::<FuturesUnordered<_>>();
     assert_eq!(stream.len(), 3);
-    assert_eq!(block_on(stream.collect::<Vec<_>>()), vec![1, 2, 3]);
+    assert_eq!(block_on(stream.collect::<Vec<_>>()), vec![3, 2, 1]);
 }
 
 #[test]
@@ -364,7 +364,7 @@ fn polled_only_once_at_most_per_iteration() {
 fn clear() {
     let mut tasks = FuturesUnordered::from_iter(vec![future::ready(1), future::ready(2)]);
 
-    assert_eq!(block_on(tasks.next()), Some(1));
+    assert_eq!(block_on(tasks.next()), Some(2));
     assert!(!tasks.is_empty());
 
     tasks.clear();

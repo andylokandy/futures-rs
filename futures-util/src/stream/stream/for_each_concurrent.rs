@@ -11,7 +11,7 @@ pin_project! {
     /// Future for the [`for_each_concurrent`](super::StreamExt::for_each_concurrent)
     /// method.
     #[must_use = "futures do nothing unless you `.await` or poll them"]
-    pub struct ForEachConcurrent<St, Fut, F> {
+    pub struct ForEachConcurrent<St, Fut, F> where Fut: Future {
         #[pin]
         stream: Option<St>,
         f: F,
@@ -23,7 +23,7 @@ pin_project! {
 impl<St, Fut, F> fmt::Debug for ForEachConcurrent<St, Fut, F>
 where
     St: fmt::Debug,
-    Fut: fmt::Debug,
+    Fut: Future + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ForEachConcurrent")

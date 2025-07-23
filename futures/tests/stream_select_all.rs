@@ -37,14 +37,14 @@ fn issue_1626() {
 
     let mut s = block_on_stream(stream::select_all(vec![a, b]));
 
-    assert_eq!(s.next(), Some(0));
     assert_eq!(s.next(), Some(10));
-    assert_eq!(s.next(), Some(1));
     assert_eq!(s.next(), Some(11));
-    assert_eq!(s.next(), Some(2));
     assert_eq!(s.next(), Some(12));
     assert_eq!(s.next(), Some(13));
     assert_eq!(s.next(), Some(14));
+    assert_eq!(s.next(), Some(0));
+    assert_eq!(s.next(), Some(1));
+    assert_eq!(s.next(), Some(2));
     assert_eq!(s.next(), None);
 }
 
@@ -60,13 +60,13 @@ fn works_1() {
 
     b_tx.unbounded_send(99).unwrap();
     a_tx.unbounded_send(33).unwrap();
-    assert_eq!(Some(33), stream.next());
     assert_eq!(Some(99), stream.next());
+    assert_eq!(Some(33), stream.next());
 
     b_tx.unbounded_send(99).unwrap();
     a_tx.unbounded_send(33).unwrap();
-    assert_eq!(Some(33), stream.next());
     assert_eq!(Some(99), stream.next());
+    assert_eq!(Some(33), stream.next());
 
     c_tx.unbounded_send(42).unwrap();
     assert_eq!(Some(42), stream.next());
@@ -81,7 +81,7 @@ fn works_1() {
 fn clear() {
     let mut tasks = select_all(vec![stream::iter(vec![1]), stream::iter(vec![2])]);
 
-    assert_eq!(block_on(tasks.next()), Some(1));
+    assert_eq!(block_on(tasks.next()), Some(2));
     assert!(!tasks.is_empty());
 
     tasks.clear();
@@ -121,17 +121,15 @@ fn iter_mut() {
         .collect::<SelectAll<_>>();
 
     assert_eq!(stream.len(), 3);
-    assert_eq!(block_on(stream.next()), Some(1));
-    assert_eq!(stream.len(), 2);
+    assert_eq!(block_on(stream.next()), Some(2));
+    assert_eq!(stream.len(), 3);
     let mut iter = stream.iter_mut();
-    assert_eq!(iter.len(), 2);
-    assert!(iter.next().is_some());
     assert_eq!(iter.len(), 1);
     assert!(iter.next().is_some());
     assert_eq!(iter.len(), 0);
     assert!(iter.next().is_none());
 
-    assert_eq!(block_on(stream.next()), Some(2));
+    assert_eq!(block_on(stream.next()), Some(1));
     assert_eq!(stream.len(), 2);
     assert_eq!(block_on(stream.next()), None);
     let mut iter = stream.iter_mut();
@@ -160,17 +158,15 @@ fn iter() {
         .collect::<SelectAll<_>>();
 
     assert_eq!(stream.len(), 3);
-    assert_eq!(block_on(stream.next()), Some(1));
-    assert_eq!(stream.len(), 2);
+    assert_eq!(block_on(stream.next()), Some(2));
+    assert_eq!(stream.len(), 3);
     let mut iter = stream.iter();
-    assert_eq!(iter.len(), 2);
-    assert!(iter.next().is_some());
     assert_eq!(iter.len(), 1);
     assert!(iter.next().is_some());
     assert_eq!(iter.len(), 0);
     assert!(iter.next().is_none());
 
-    assert_eq!(block_on(stream.next()), Some(2));
+    assert_eq!(block_on(stream.next()), Some(1));
     assert_eq!(stream.len(), 2);
     assert_eq!(block_on(stream.next()), None);
     let mut iter = stream.iter();

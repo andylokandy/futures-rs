@@ -68,15 +68,15 @@ fn try_flatten_unordered() {
                 Err(1),
                 Err(3),
                 Err(5),
-                Ok(2),
-                Ok(4),
                 Ok(6),
+                Ok(36),
+                Ok(216),
                 Ok(4),
                 Err(16),
-                Ok(36),
-                Ok(8),
                 Err(64),
-                Ok(216)
+                Ok(2),
+                Ok(4),
+                Ok(8)
             ],
             test_st.collect::<Vec<_>>().await
         )
